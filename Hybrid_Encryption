@@ -1,1 +1,37 @@
+import json
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding, serialization, hashes
+from cryptography.hazmat.primitives.asymmetric import padding as asym_padding
 
+#Carregamento da chave privada do destinatário
+with open("chave_privada_destinatario.pem", "rb") as f:
+    private_key = serialization.load_pem_private_key(f.read(), password=None)
+
+#Carregamento dos dados enviados pela origem
+with open("mensagem_criptografada.json", "r") as f:
+    pacote = json.load(f)
+
+iv = bytes.fromhex(pacote["iv"])
+encrypted_data = bytes.fromhex(pacote["encrypted_data"])
+encrypted_key = bytes.fromhex(pacote["encrypted_key"])
+
+#Descriptografa a chave simétrica AES com RSA
+aes_key = private_key.decrypt(
+    encrypted_key,
+    asym_padding.OAEP(
+        mgf=asym_padding.MGF1(hashes.SHA256()),
+        algorithm=hashes.SHA256(),
+        label=None
+    )
+)
+
+#Descriptografa a mensagem com o uso da chave simétrica AES já descriptografada
+cipher = Cipher(algorithms.AES(aes_key), modes.CBC(iv))
+decryptor = cipher.decryptor()
+padded_plaintext = decryptor.update(encrypted_data) + decryptor.finalize()
+
+unpadder = padding.PKCS7(128).unpadder()
+plaintext = unpadder.update(padded_plaintext) + unpadder.finalize()
+
+print("\n Mensagem descriptografada:")
+print(plaintext.decode())
